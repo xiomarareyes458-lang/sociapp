@@ -1,0 +1,7 @@
+{
+  "name": "SocialApp",
+  "description": "A minimalist social media application with dark mode and baby blue theme, featuring feed, messaging, and profile management.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
