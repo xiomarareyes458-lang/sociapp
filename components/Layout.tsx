@@ -24,11 +24,14 @@ const Layout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
-      if (file.size > 50 * 1024 * 1024) { // Límite de 50MB para mayor flexibilidad
-        setError('El archivo supera los 50MB.');
+      const isVideo = file.type.startsWith('video/');
+      
+      // Límite incrementado a 200MB para acomodar mejor contenido de video en alta resolución
+      if (file.size > 200 * 1024 * 1024) { 
+        setError(isVideo ? 'El archivo de video supera el límite de 200MB.' : 'El archivo de imagen supera el límite de 200MB.');
         return;
       }
-      const isVideo = file.type.startsWith('video/');
+      
       setMediaType(isVideo ? 'video' : 'image');
       const reader = new FileReader();
       reader.onloadend = () => {

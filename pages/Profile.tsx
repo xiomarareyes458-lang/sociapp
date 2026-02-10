@@ -16,13 +16,15 @@ const Profile: React.FC = () => {
   
   const [activeTab, setActiveTab] = useState('Posts');
   const [isEditing, setIsEditing] = useState(false);
-  const [editBio, setEditBio] = useState(currentUser?.bio || '');
-  const [editAvatar, setEditAvatar] = useState(currentUser?.avatar || '');
-  const [editCoverPhoto, setEditCoverPhoto] = useState(currentUser?.coverPhoto || '');
   
-  const [usersModalMode, setUsersModalMode] = useState<'followers' | 'following' | null>(null);
+  // Estados de edición locales
+  const [editBio, setEditBio] = useState('');
+  const [editAvatar, setEditAvatar] = useState('');
+  const [editCoverPhoto, setEditCoverPhoto] = useState('');
   const [localAvatarBase64, setLocalAvatarBase64] = useState<string | null>(null);
   const [localCoverBase64, setLocalCoverBase64] = useState<string | null>(null);
+  
+  const [usersModalMode, setUsersModalMode] = useState<'followers' | 'following' | null>(null);
 
   // Story Viewing States
   const [showStoryViewer, setShowStoryViewer] = useState(false);
@@ -35,6 +37,17 @@ const Profile: React.FC = () => {
   const profileUser = users.find(u => u.username === username) || (currentUser?.username === username ? currentUser : null);
   const userPosts = posts.filter(p => p.username === username);
   const isOwnProfile = currentUser?.username === username;
+
+  // Sincronizar datos de edición cuando se abre el modo edición
+  useEffect(() => {
+    if (isEditing && currentUser) {
+      setEditBio(currentUser.bio || '');
+      setEditAvatar(currentUser.avatar || '');
+      setEditCoverPhoto(currentUser.coverPhoto || '');
+      setLocalAvatarBase64(null);
+      setLocalCoverBase64(null);
+    }
+  }, [isEditing, currentUser]);
 
   // Lógica de historias del perfil actual
   const activeStories = useMemo(() => {
@@ -135,8 +148,8 @@ const Profile: React.FC = () => {
     
     updateUser(currentUser.id, { 
       bio: editBio, 
-      avatar: localAvatarBase64 || editAvatar || profileUser.avatar, 
-      coverPhoto: localCoverBase64 || editCoverPhoto || profileUser.coverPhoto 
+      avatar: localAvatarBase64 || editAvatar || currentUser.avatar, 
+      coverPhoto: localCoverBase64 || editCoverPhoto || currentUser.coverPhoto 
     });
     
     setIsEditing(false);
@@ -169,6 +182,10 @@ const Profile: React.FC = () => {
 
   return (
     <div className="w-full min-h-screen bg-black text-white">
+      {/* Input de archivos ocultos */}
+      <input type="file" accept="image/*" hidden ref={avatarInputRef} onChange={handleAvatarChange} />
+      <input type="file" accept="image/*" hidden ref={coverInputRef} onChange={handleCoverChange} />
+
       {/* Profile Header */}
       <div className="sticky top-0 z-40 bg-black/80 backdrop-blur-md border-b border-[#2F3336] p-2 flex items-center justify-between px-4">
         <div className="flex items-center gap-6">
@@ -188,14 +205,24 @@ const Profile: React.FC = () => {
       </div>
 
       {/* Banner / Cover */}
-      <div className="w-full h-48 bg-[#121212] overflow-hidden relative border-b border-[#2F3336]">
+      <div 
+        className={`w-full h-48 bg-[#121212] overflow-hidden relative border-b border-[#2F3336] ${isEditing ? 'cursor-pointer group/cover' : ''}`}
+        onClick={isEditing ? () => coverInputRef.current?.click() : undefined}
+      >
          {(localCoverBase64 || profileUser.coverPhoto) ? (
            <>
-            <img src={localCoverBase64 || profileUser.coverPhoto || ''} className="w-full h-full object-cover opacity-60" alt="cover" />
+            <img src={localCoverBase64 || profileUser.coverPhoto || ''} className="w-full h-full object-cover opacity-60 transition-opacity group-hover/cover:opacity-40" alt="cover" />
             <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/60"></div>
            </>
          ) : (
-           <div className="w-full h-full bg-[#121212]"></div>
+           <div className="w-full h-full bg-[#121212] group-hover/cover:bg-[#1A1A1A] transition-colors"></div>
+         )}
+         {isEditing && (
+           <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover/cover:opacity-100 transition-opacity">
+              <div className="bg-black/40 p-4 rounded-full backdrop-blur-md border border-white/20">
+                <Camera className="w-8 h-8 text-white" />
+              </div>
+           </div>
          )}
       </div>
 
@@ -203,15 +230,12 @@ const Profile: React.FC = () => {
       <div className="px-4 relative mb-6">
         <div className="flex justify-between items-end -mt-16 mb-4">
           <div 
-            onClick={!isEditing ? openStoryViewer : undefined}
-            className={`w-32 h-32 md:w-36 md:h-36 rounded-full border-4 border-black overflow-hidden bg-black ring-2 transition-all relative group cursor-pointer ${hasStories ? 'ring-[#2ECC71]' : 'ring-transparent hover:ring-[#2ECC71]/40'}`}
+            onClick={!isEditing ? openStoryViewer : () => avatarInputRef.current?.click()}
+            className={`w-32 h-32 md:w-36 md:h-36 rounded-full border-4 border-black overflow-hidden bg-black ring-2 transition-all relative group cursor-pointer ${hasStories && !isEditing ? 'ring-[#2ECC71]' : 'ring-transparent hover:ring-[#2ECC71]/40'}`}
           >
-            <img src={localAvatarBase64 || profileUser.avatar} className="w-full h-full object-cover" />
+            <img src={localAvatarBase64 || profileUser.avatar} className="w-full h-full object-cover transition-opacity group-hover:opacity-80" />
             {isEditing && (
-              <div 
-                onClick={(e) => { e.stopPropagation(); avatarInputRef.current?.click(); }}
-                className="absolute inset-0 bg-black/40 flex items-center justify-center cursor-pointer opacity-0 group-hover:opacity-100 transition-opacity"
-              >
+              <div className="absolute inset-0 bg-black/40 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
                 <Camera className="w-8 h-8 text-white" />
               </div>
             )}
@@ -223,7 +247,7 @@ const Profile: React.FC = () => {
             {isOwnProfile ? (
                <button 
                  onClick={() => setIsEditing(!isEditing)} 
-                 className="px-4 py-2 border border-[#2F3336] hover:bg-[#2ECC71]/10 hover:text-[#2ECC71] hover:border-[#2ECC71] rounded-full text-sm font-bold transition-all active:scale-95"
+                 className={`px-4 py-2 border rounded-full text-sm font-bold transition-all active:scale-95 ${isEditing ? 'border-red-500 text-red-500 hover:bg-red-500/10' : 'border-[#2F3336] hover:bg-[#2ECC71]/10 hover:text-[#2ECC71] hover:border-[#2ECC71]'}`}
                >
                  {isEditing ? 'Cancelar' : 'Editar perfil'}
                </button>
@@ -245,23 +269,22 @@ const Profile: React.FC = () => {
 
         {/* Edit Form */}
         {isEditing ? (
-           <div className="space-y-6 py-4 bg-[#16181C] p-6 rounded-2xl border border-[#2ECC71]/30 animate-in fade-in duration-300">
+           <div className="space-y-6 py-4 bg-[#1a1f2e] p-6 rounded-2xl border-2 border-[#2ECC71] animate-in fade-in duration-300 shadow-2xl">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-3">
                   <label className="text-xs font-bold text-[#2ECC71] uppercase tracking-widest">Foto de Perfil</label>
                   <div className="flex flex-col gap-2">
-                    <input type="file" accept="image/*,image/webp,image/avif,image/png,image/jpeg,image/gif" hidden ref={avatarInputRef} onChange={handleAvatarChange} />
                     <button 
                       onClick={() => avatarInputRef.current?.click()}
-                      className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-[#2F3336] p-3 rounded-xl hover:border-[#2ECC71]/50 transition-colors"
+                      className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-[#2ECC71]/50 p-3 rounded-xl hover:border-[#2ECC71] transition-all bg-[#0f1419] hover:bg-[#1a1f2e]"
                     >
-                      <Upload className="w-4 h-4" /> 
-                      <span className="text-xs font-bold">{localAvatarBase64 ? 'Imagen lista' : 'Subir desde dispositivo'}</span>
+                      <Upload className="w-4 h-4 text-[#2ECC71]" /> 
+                      <span className="text-xs font-bold text-white">{localAvatarBase64 ? 'Imagen cargada' : 'Cambiar desde dispositivo'}</span>
                     </button>
                     <input 
                       type="text" 
                       placeholder="O pega URL de imagen..."
-                      className="w-full bg-black/50 p-2.5 rounded-xl text-xs border border-[#2F3336] outline-none focus:border-[#2ECC71]"
+                      className="w-full bg-[#0f1419] p-3 rounded-xl text-xs border-2 border-[#2F3336] outline-none focus:border-[#2ECC71] transition-all text-white placeholder:text-gray-500"
                       value={editAvatar}
                       onChange={(e) => {setEditAvatar(e.target.value); setLocalAvatarBase64(null);}}
                     />
@@ -271,18 +294,17 @@ const Profile: React.FC = () => {
                 <div className="space-y-3">
                   <label className="text-xs font-bold text-[#2ECC71] uppercase tracking-widest">Foto de Portada</label>
                   <div className="flex flex-col gap-2">
-                    <input type="file" accept="image/*,image/webp,image/avif,image/png,image/jpeg,image/gif" hidden ref={coverInputRef} onChange={handleCoverChange} />
                     <button 
                       onClick={() => coverInputRef.current?.click()}
-                      className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-[#2F3336] p-3 rounded-xl hover:border-[#2ECC71]/50 transition-colors"
+                      className="w-full flex items-center justify-center gap-2 border-2 border-dashed border-[#2ECC71]/50 p-3 rounded-xl hover:border-[#2ECC71] transition-all bg-[#0f1419] hover:bg-[#1a1f2e]"
                     >
-                      <Upload className="w-4 h-4" /> 
-                      <span className="text-xs font-bold">{localCoverBase64 ? 'Imagen lista' : 'Subir desde dispositivo'}</span>
+                      <Upload className="w-4 h-4 text-[#2ECC71]" /> 
+                      <span className="text-xs font-bold text-white">{localCoverBase64 ? 'Imagen cargada' : 'Cambiar desde dispositivo'}</span>
                     </button>
                     <input 
                       type="text" 
                       placeholder="O pega URL de imagen..."
-                      className="w-full bg-black/50 p-2.5 rounded-xl text-xs border border-[#2F3336] outline-none focus:border-[#2ECC71]"
+                      className="w-full bg-[#0f1419] p-3 rounded-xl text-xs border-2 border-[#2F3336] outline-none focus:border-[#2ECC71] transition-all text-white placeholder:text-gray-500"
                       value={editCoverPhoto}
                       onChange={(e) => {setEditCoverPhoto(e.target.value); setLocalCoverBase64(null);}}
                     />
@@ -293,14 +315,17 @@ const Profile: React.FC = () => {
               <div className="space-y-3">
                 <label className="text-xs font-bold text-[#2ECC71] uppercase tracking-widest">Biografía</label>
                 <textarea 
-                  className="w-full bg-black/50 p-3 rounded-xl text-sm border border-[#2F3336] outline-none focus:border-[#2ECC71] h-24 resize-none"
+                  className="w-full bg-[#0f1419] p-4 rounded-xl text-sm border-2 border-[#2F3336] outline-none focus:border-[#2ECC71] h-28 resize-none transition-all text-white placeholder:text-gray-500"
                   value={editBio}
                   onChange={(e) => setEditBio(e.target.value)}
-                  placeholder="Cuéntanos sobre ti..."
+                  placeholder="Escribe algo sobre ti para que los demás te conozcan..."
                 />
               </div>
 
-              <button onClick={handleSaveProfile} className="w-full bg-[#2ECC71] text-black py-3 rounded-xl font-bold hover:bg-[#27AE60] transition-all shadow-lg active:scale-[0.98]">
+              <button 
+                onClick={handleSaveProfile} 
+                className="w-full bg-[#2ECC71] text-black py-4 rounded-xl font-extrabold hover:bg-[#27AE60] transition-all shadow-lg active:scale-[0.98] uppercase tracking-widest text-sm"
+              >
                 Guardar Cambios
               </button>
            </div>
@@ -310,7 +335,7 @@ const Profile: React.FC = () => {
               <h2 className="text-xl font-extrabold">{profileUser.fullName}</h2>
               <div className="text-gray-500 text-[15px]">@{profileUser.username}</div>
             </div>
-            <div className="text-[15px] leading-relaxed text-gray-200">
+            <div className="text-[15px] leading-relaxed text-gray-200 whitespace-pre-wrap">
               {profileUser.bio || "No hay biografía disponible."}
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-gray-500 text-[15px]">
