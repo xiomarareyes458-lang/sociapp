@@ -1,4 +1,3 @@
-
 import React, { useState, useRef, useMemo, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
 import { Settings, Grid, Bookmark, User as UserIcon, Check, Heart, MessageCircle, Camera, ArrowLeft, Calendar, Link as LinkIcon, MapPin, LogOut, Upload, X, Clock, ChevronLeft, ChevronRight, Trash2 } from 'lucide-react';
@@ -269,10 +268,11 @@ const Profile: React.FC = () => {
 
         {/* Edit Form */}
         {isEditing ? (
-           <div className="space-y-6 py-4 bg-[#1a1f2e] p-6 rounded-2xl border-2 border-[#2ECC71] animate-in fade-in duration-300 shadow-2xl">
+           <div className="space-y-6 py-6 bg-white/10 backdrop-blur-xl p-6 rounded-2xl border-2 border-[#2ECC71] shadow-2xl mt-4">
+              <h3 className="text-xl font-bold text-white mb-4">✏️ Editar Perfil</h3>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-3">
-                  <label className="text-xs font-bold text-[#2ECC71] uppercase tracking-widest">Foto de Perfil</label>
+                  <label className="text-sm font-bold text-[#2ECC71] uppercase tracking-wide">Foto de Perfil</label>
                   <div className="flex flex-col gap-2">
                     <button 
                       onClick={() => avatarInputRef.current?.click()}
@@ -292,7 +292,7 @@ const Profile: React.FC = () => {
                 </div>
 
                 <div className="space-y-3">
-                  <label className="text-xs font-bold text-[#2ECC71] uppercase tracking-widest">Foto de Portada</label>
+                  <label className="text-sm font-bold text-[#2ECC71] uppercase tracking-wide">Foto de Portada</label>
                   <div className="flex flex-col gap-2">
                     <button 
                       onClick={() => coverInputRef.current?.click()}
@@ -313,7 +313,7 @@ const Profile: React.FC = () => {
               </div>
 
               <div className="space-y-3">
-                <label className="text-xs font-bold text-[#2ECC71] uppercase tracking-widest">Biografía</label>
+                <label className="text-sm font-bold text-[#2ECC71] uppercase tracking-wide">Biografía</label>
                 <textarea 
                   className="w-full bg-[#0f1419] p-4 rounded-xl text-sm border-2 border-[#2F3336] outline-none focus:border-[#2ECC71] h-28 resize-none transition-all text-white placeholder:text-gray-500"
                   value={editBio}
@@ -326,7 +326,7 @@ const Profile: React.FC = () => {
                 onClick={handleSaveProfile} 
                 className="w-full bg-[#2ECC71] text-black py-4 rounded-xl font-extrabold hover:bg-[#27AE60] transition-all shadow-lg active:scale-[0.98] uppercase tracking-widest text-sm"
               >
-                Guardar Cambios
+                💾 Guardar Cambios
               </button>
            </div>
         ) : (
