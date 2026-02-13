@@ -1,4 +1,5 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.45.4';
+import { createClient } from '@supabase/supabase-js';
+
 
 // Priorizar variables de entorno de Vite/Netlify
 const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || 'https://evrnqrczjscuahopbkde.supabase.co';
