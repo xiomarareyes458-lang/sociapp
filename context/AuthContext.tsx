@@ -1,3 +1,4 @@
+
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { User } from '../types';
 import { DEFAULT_AVATAR } from '../constants';
@@ -8,7 +9,7 @@ interface AuthContextType {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, username: string, fullName: string) => Promise<void>;
   logout: () => Promise<void>;
-  updateCurrentUser: (userData: Partial<User>) => Promise<void>;
+  updateCurrentUser: (userData: Partial<User> | any) => Promise<void>;
   enterDemoMode: () => void;
   isAuthenticated: boolean;
   isDemoMode: boolean;
@@ -17,29 +18,35 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const mapProfileToUser = (profile: any): User => ({
-  id: profile.id,
-  username: profile.username,
-  email: profile.email,
-  fullName: profile.full_name,
-  avatar: profile.avatar_url || DEFAULT_AVATAR,
-  bio: profile.bio || '',
-  joinedAt: profile.joined_at ? Number(profile.joined_at) : Date.now(),
-  coverPhoto: profile.cover_photo,
-  followers: profile.followers || [],
-  following: profile.following || []
-});
+/**
+ * SAFE MAPPER: Profiles (Database snake_case -> App camelCase)
+ */
+export const mapDbProfileToUser = (p: any): User => {
+  if (!p) return null as any;
+  return {
+    id: p.id || '',
+    username: p.username || 'usuario',
+    email: p.email || '',
+    fullName: p.full_name || 'Usuaria',
+    avatar: p.avatar_url || DEFAULT_AVATAR,
+    bio: p.bio || '',
+    joinedAt: p.joined_at ? Number(p.joined_at) : Date.now(),
+    coverPhoto: p.cover_photo || null,
+    followers: Array.isArray(p.followers) ? p.followers : [],
+    following: Array.isArray(p.following) ? p.following : []
+  };
+};
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
-  const [isNetworkBlocked] = useState(false);
+  const [isNetworkBlocked, setIsNetworkBlocked] = useState(false);
   const isMounted = useRef(true);
 
   useEffect(() => {
     isMounted.current = true;
-
+    
     if (!isSupabaseConfigured || !supabase) {
       setLoading(false);
       return;
@@ -47,21 +54,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const initialize = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+        if (sessionError) throw sessionError;
 
         if (session?.user) {
-          const { data: profile } = await supabase
+          const { data: profile, error: profileError } = await supabase
             .from('profiles')
-            .select('*')
+            .select('id, email, username, full_name, avatar_url, bio, joined_at, cover_photo, followers, following')
             .eq('id', session.user.id)
-            .single();
+            .maybeSingle();
 
           if (profile && isMounted.current) {
-            setCurrentUser(mapProfileToUser(profile));
+            setCurrentUser(mapDbProfileToUser(profile));
           }
         }
       } catch (err) {
-        console.error("Error recuperando sesión:", err);
+        console.warn("Error en inicialización de Auth:", err);
       } finally {
         if (isMounted.current) setLoading(false);
       }
@@ -74,17 +82,19 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user) {
           const { data: profile } = await supabase
             .from('profiles')
-            .select('*')
+            .select('id, email, username, full_name, avatar_url, bio, joined_at, cover_photo, followers, following')
             .eq('id', session.user.id)
-            .single();
+            .maybeSingle();
 
-          if (profile) setCurrentUser(mapProfileToUser(profile));
+          if (profile && isMounted.current) {
+            setCurrentUser(mapDbProfileToUser(profile));
+          }
         } else if (event === 'SIGNED_OUT') {
           setCurrentUser(null);
           setIsDemoMode(false);
         }
-      } catch (e) {
-        console.error("Error en cambio de estado de auth:", e);
+      } catch (err) {
+        console.warn("Error en cambio de estado de Auth:", err);
       }
     });
 
@@ -95,22 +105,43 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (email: string, password: string) => {
-    if (!supabase) throw new Error('Servicio no disponible');
+    if (!supabase) throw new Error('Supabase no configurado');
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
   };
 
-  // 🔥 IMPORTANTE: ya NO insertamos perfil manualmente
-  const register = async (email: string, password: string) => {
-    if (!supabase) throw new Error('Servicio no disponible');
-    const { error } = await supabase.auth.signUp({ email, password });
-    if (error) throw error;
+  const register = async (email: string, password: string, username: string, fullName: string) => {
+    if (!supabase) throw new Error('Supabase no configurado');
+    
+    const { data, error: signUpError } = await supabase.auth.signUp({ email, password });
+    if (signUpError) throw signUpError;
+    if (!data.user) throw new Error('No se pudo crear el usuario');
+
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .insert([{
+        id: data.user.id,
+        username: username.toLowerCase().trim(),
+        email: email.trim(),
+        full_name: fullName.trim(),
+        avatar_url: DEFAULT_AVATAR,
+        joined_at: Date.now(),
+        followers: [],
+        following: []
+      }]);
+
+    if (profileError) throw profileError;
   };
 
   const logout = async () => {
-    if (supabase) await supabase.auth.signOut();
-    setCurrentUser(null);
-    setIsDemoMode(false);
+    try {
+      if (supabase) await supabase.auth.signOut();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setCurrentUser(null);
+      setIsDemoMode(false);
+    }
   };
 
   const enterDemoMode = () => {
@@ -121,41 +152,54 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email: 'demo@socialapp.com',
       fullName: 'Usuario Invitado',
       avatar: DEFAULT_AVATAR,
-      bio: 'Modo Demo Activo',
+      bio: 'Modo Demo',
       joinedAt: Date.now(),
+      coverPhoto: null,
       followers: [],
       following: []
     });
   };
 
-  const updateCurrentUser = async (userData: Partial<User>) => {
-    if (!currentUser || !supabase) return;
+  const updateCurrentUser = async (userData: any) => {
+    if (!currentUser) return;
+    
+    // Normalizar datos para estado local (camelCase)
+    const normalizedData: any = { ...userData };
+    if (userData.avatar_url) normalizedData.avatar = userData.avatar_url;
+    if (userData.cover_photo) normalizedData.coverPhoto = userData.cover_photo;
+    if (userData.full_name) normalizedData.fullName = userData.full_name;
 
-    const dbUpdates: any = {};
-    if (userData.fullName) dbUpdates.full_name = userData.fullName;
-    if (userData.avatar) dbUpdates.avatar_url = userData.avatar;
-    if (userData.bio !== undefined) dbUpdates.bio = userData.bio;
-    if (userData.coverPhoto !== undefined) dbUpdates.cover_photo = userData.coverPhoto;
-    if (userData.following) dbUpdates.following = userData.following;
-    if (userData.followers) dbUpdates.followers = userData.followers;
+    if (isDemoMode) {
+      setCurrentUser({ ...currentUser, ...normalizedData });
+      return;
+    }
 
-    await supabase.from('profiles').update(dbUpdates).eq('id', currentUser.id);
-    setCurrentUser({ ...currentUser, ...userData });
+    if (supabase) {
+      const dbUpdates: any = {};
+      if (userData.username) dbUpdates.username = userData.username.toLowerCase().trim();
+      if (userData.fullName || userData.full_name) dbUpdates.full_name = userData.fullName || userData.full_name;
+      if (userData.avatar || userData.avatar_url) dbUpdates.avatar_url = userData.avatar || userData.avatar_url;
+      if (userData.bio !== undefined) dbUpdates.bio = userData.bio;
+      if (userData.coverPhoto !== undefined || userData.cover_photo !== undefined) 
+        dbUpdates.cover_photo = userData.coverPhoto !== undefined ? userData.coverPhoto : userData.cover_photo;
+      if (userData.followers) dbUpdates.followers = userData.followers;
+      if (userData.following) dbUpdates.following = userData.following;
+
+      try {
+        const { error } = await supabase.from('profiles').update(dbUpdates).eq('id', currentUser.id);
+        if (error) throw error;
+        setCurrentUser({ ...currentUser, ...normalizedData });
+      } catch (err: any) {
+        console.error("Error al actualizar perfil:", err);
+        throw err;
+      }
+    }
   };
-
-  if (loading) return null;
 
   return (
     <AuthContext.Provider value={{
-      currentUser,
-      login,
-      register,
-      logout,
-      updateCurrentUser,
-      enterDemoMode,
-      isAuthenticated: !!currentUser,
-      isDemoMode,
-      isNetworkBlocked
+      currentUser, login, register, logout, updateCurrentUser, enterDemoMode,
+      isAuthenticated: !!currentUser, isDemoMode, isNetworkBlocked
     }}>
       {children}
     </AuthContext.Provider>
@@ -164,6 +208,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) throw new Error('useAuth must be used within AuthProvider');
+  if (!context) throw new Error('useAuth debe usarse dentro de AuthProvider');
   return context;
 };

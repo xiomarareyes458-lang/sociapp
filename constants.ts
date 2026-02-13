@@ -13,6 +13,8 @@ export const INITIAL_DATA: AppState = {
       avatar: 'https://picsum.photos/id/64/200/200',
       bio: 'Adventure seeker | Photography enthusiast',
       joinedAt: 1714561200000, // Mayo 2024
+      // Fixed: Added missing 'coverPhoto' property to match User type
+      coverPhoto: null,
       followers: ['user2'],
       following: ['user2', 'user3']
     },
@@ -24,6 +26,8 @@ export const INITIAL_DATA: AppState = {
       avatar: 'https://picsum.photos/id/65/200/200',
       bio: 'Traveler & Foodie 🍕🌍',
       joinedAt: 1714647600000, // Mayo 2024
+      // Fixed: Added missing 'coverPhoto' property to match User type
+      coverPhoto: null,
       followers: ['user1', 'user3'],
       following: ['user1']
     },
@@ -35,6 +39,8 @@ export const INITIAL_DATA: AppState = {
       avatar: 'https://picsum.photos/id/103/200/200',
       bio: 'Coding is life. 💻',
       joinedAt: 1714734000000, // Mayo 2024
+      // Fixed: Added missing 'coverPhoto' property to match User type
+      coverPhoto: null,
       followers: ['user1'],
       following: ['user2']
     }
@@ -48,7 +54,8 @@ export const INITIAL_DATA: AppState = {
       imageUrl: 'https://picsum.photos/id/10/800/800',
       // Fixed: Added missing 'type' property
       type: 'image',
-      caption: 'Loving the mountain views today! #nature #hiking',
+      // Fix: 'caption' does not exist in type 'Post', changed to 'content'
+      content: 'Loving the mountain views today! #nature #hiking',
       likes: ['user2', 'user3'],
       comments: [
         { id: 'c1', userId: 'user2', username: 'janemiles', text: 'Stunning!', createdAt: Date.now() - 1000000 }
@@ -63,7 +70,8 @@ export const INITIAL_DATA: AppState = {
       imageUrl: 'https://picsum.photos/id/42/800/800',
       // Fixed: Added missing 'type' property
       type: 'image',
-      caption: 'Best coffee in town ☕️☕️',
+      // Fix: 'caption' does not exist in type 'Post', changed to 'content'
+      content: 'Best coffee in town ☕️☕️',
       likes: ['user1'],
       comments: [],
       createdAt: Date.now() - 7200000

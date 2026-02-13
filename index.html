@@ -1,59 +1,61 @@
 
 <!DOCTYPE html>
-<html lang="en">
+<html lang="es">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>SocialApp - Modern Green Dark Mode</title>
-    <script src="https://cdn.tailwindcss.com"></script>
+    <title>SocialApp - Conectado</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📱</text></svg>">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Note: In a full build, Tailwind is compiled to a real CSS file. Using the Play CDN for development. -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            colors: {
+              primary: '#2ECC71',
+              dark: '#000000',
+              card: '#121212',
+              border: '#2F3336'
+            }
+          }
+        }
+      }
+    </script>
     <style>
       body {
         font-family: 'Inter', sans-serif;
         background-color: #000000;
         color: #ffffff;
-        overflow-y: scroll;
+        margin: 0;
+        overflow-x: hidden;
       }
-      ::-webkit-scrollbar {
-        width: 8px;
+      .loader-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        background-color: #000;
       }
-      ::-webkit-scrollbar-track {
-        background: #000;
+      .spinner {
+        width: 40px;
+        height: 40px;
+        border: 4px solid rgba(46, 204, 113, 0.1);
+        border-top: 4px solid #2ECC71;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
       }
-      ::-webkit-scrollbar-thumb {
-        background: #2F3336;
-        border-radius: 10px;
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
       }
-      ::-webkit-scrollbar-thumb:hover {
-        background: #2ECC71;
-      }
-      
-      .no-scrollbar::-webkit-scrollbar {
-        display: none;
-      }
-      .no-scrollbar {
-        -ms-overflow-style: none;
-        scrollbar-width: none;
-      }
-
-      .feed-container {
-        max-width: 600px;
-        width: 100%;
-        border-left: 1px solid #2F3336;
-        border-right: 1px solid #2F3336;
-      }
-
-      .post-transition {
-        transition: background-color 0.2s;
-      }
-      .post-transition:hover {
-        background-color: rgba(255, 255, 255, 0.03);
-      }
-
-      /* Custom Green Transitions */
-      .accent-green { color: #2ECC71; }
-      .bg-accent-green { background-color: #2ECC71; }
-      .border-accent-green { border-color: #2ECC71; }
+      /* Custom utility classes */
+      .no-scrollbar::-webkit-scrollbar { display: none; }
+      .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+      .post-transition { transition: all 0.2s ease-in-out; }
+      .post-transition:hover { background-color: rgba(255,255,255,0.02); }
     </style>
     <script type="importmap">
     {
@@ -67,10 +69,14 @@
       }
     }
     </script>
-</head>
+  </head>
   <body>
-    <div id="root"></div>
-  <script type="module" src="/index.tsx"></script>
-  
-</body>
+    <div id="root">
+      <div class="loader-container">
+        <div class="spinner"></div>
+        <p style="margin-top: 1rem; color: #2ECC71; font-size: 10px; font-weight: bold; text-transform: uppercase; letter-spacing: 0.1em;">SocialApp</p>
+      </div>
+    </div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
 </html>

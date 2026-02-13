@@ -7,7 +7,7 @@ export interface User {
   avatar: string;
   bio: string;
   joinedAt: number;
-  coverPhoto?: string | null;
+  coverPhoto: string | null;
   followers: string[];
   following: string[];
 }
@@ -37,12 +37,12 @@ export interface Post {
   userAvatar: string;
   imageUrl: string;
   type: 'image' | 'video';
-  caption: string;
+  content: string; 
   likes: string[];
   comments: Comment[];
   createdAt: number;
-  repostOf?: string; // ID del post original si es un repost
-  repostedBy?: string; // Nombre del usuario que reposteo para mostrar en la UI
+  repostOf?: string;
+  repostedBy?: string;
 }
 
 export interface Message {
@@ -70,6 +70,8 @@ export interface Notification {
   senderAvatar: string;
   receiverId: string;
   targetPostId?: string;
+  // Added referenceId to support linking to posts or other entities
+  referenceId?: string;
   createdAt: number;
   read: boolean;
   status?: 'pending' | 'accepted' | 'rejected';

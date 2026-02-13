@@ -135,7 +135,8 @@ const Explore: React.FC = () => {
                       </>
                     ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center group-hover:bg-[#16181C] transition-colors">
-                        <p className="text-[12px] text-gray-400 italic line-clamp-5 leading-relaxed font-serif">"{post.caption}"</p>
+                        {/* Fix: Changed post.caption to post.content */}
+                        <p className="text-[12px] text-gray-400 italic line-clamp-5 leading-relaxed font-serif">"{post.content}"</p>
                         <div className="mt-3 text-[10px] font-bold text-[#2ECC71] tracking-widest uppercase">@{post.username}</div>
                       </div>
                     )}

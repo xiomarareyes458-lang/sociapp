@@ -3,13 +3,14 @@ import React, { useEffect } from 'react';
 import { useSocial } from '../context/SocialContext';
 import { useAuth } from '../context/AuthContext';
 import { formatDistanceToNow } from 'date-fns';
-import { Link } from 'react-router-dom';
-import { Heart, UserPlus, MessageSquare, Mail, Check, X, UserCheck, UserX } from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
+import { Heart, UserPlus, MessageSquare, Mail, Check, X, UserCheck, UserX, Users } from 'lucide-react';
 import { NotificationType } from '../types';
 
 const Notifications: React.FC = () => {
   const { notifications, markNotificationsAsRead, respondToFriendRequest } = useSocial();
   const { currentUser } = useAuth();
+  const navigate = useNavigate();
 
   useEffect(() => {
     markNotificationsAsRead();
@@ -19,7 +20,7 @@ const Notifications: React.FC = () => {
 
   const getIcon = (type: NotificationType, status?: string) => {
     if (type === NotificationType.FRIEND_REQUEST || type === NotificationType.FRIEND_ACCEPTED) {
-      if (status === 'accepted' || type === NotificationType.FRIEND_ACCEPTED) return <UserCheck className="w-4 h-4 text-[#2ECC71]" />;
+      if (status === 'accepted' || type === NotificationType.FRIEND_ACCEPTED) return <Users className="w-4 h-4 text-[#2ECC71]" />;
       if (status === 'rejected') return <UserX className="w-4 h-4 text-red-500" />;
       return <UserPlus className="w-4 h-4 text-[#2ECC71]" />;
     }
@@ -31,6 +32,16 @@ const Notifications: React.FC = () => {
     }
   };
 
+  const handleNotifClick = (notif: any) => {
+    if (notif.type === NotificationType.MESSAGE) {
+      navigate(`/messages?userId=${notif.senderId}`);
+    } else if (notif.referenceId && (notif.type === NotificationType.LIKE || notif.type === NotificationType.COMMENT)) {
+      navigate(`/post/${notif.referenceId}`);
+    } else {
+      navigate(`/profile/${notif.senderUsername}`);
+    }
+  };
+
   return (
     <div className="max-w-[600px] mx-auto pt-8 px-4 pb-20">
       <h1 className="text-2xl font-bold mb-8">Notificaciones</h1>
@@ -38,7 +49,11 @@ const Notifications: React.FC = () => {
         {userNotifications.length > 0 ? (
           <div className="divide-y divide-[#2F3336]">
             {userNotifications.map(notif => (
-              <div key={notif.id} className={`flex flex-col p-4 hover:bg-white/5 transition-colors ${!notif.read ? 'bg-[#2ECC71]/5' : ''}`}>
+              <div 
+                key={notif.id} 
+                onClick={() => handleNotifClick(notif)}
+                className={`flex flex-col p-4 hover:bg-white/5 transition-colors cursor-pointer ${!notif.read ? 'bg-[#2ECC71]/5 border-l-4 border-l-[#2ECC71]' : ''}`}
+              >
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
                     <div className="relative group flex-shrink-0">
@@ -49,17 +64,21 @@ const Notifications: React.FC = () => {
                     </div>
                     <div>
                       <div className="flex flex-wrap items-center gap-1">
-                        <Link to={`/profile/${notif.senderUsername}`} className="font-bold text-white hover:text-[#2ECC71] transition-colors">
+                        <Link 
+                          to={`/profile/${notif.senderUsername}`} 
+                          onClick={(e) => e.stopPropagation()}
+                          className="font-bold text-white hover:text-[#2ECC71] transition-colors"
+                        >
                           {notif.senderUsername}
                         </Link>
                         {notif.type === NotificationType.MESSAGE ? (
-                          <Link to={`/messages?userId=${notif.senderId}`} className="text-[#2ECC71] hover:underline font-medium">
+                          <span className="text-[#2ECC71] font-medium">
                             te envió un mensaje privado.
-                          </Link>
+                          </span>
                         ) : notif.type === NotificationType.COMMENT ? (
-                          <Link to={`/post/${notif.targetPostId}`} className="text-gray-400 hover:text-[#2ECC71] transition-colors">
+                          <span className="text-gray-400">
                             comentó en tu post. <span className="text-[#2ECC71] font-medium text-xs">Ver post</span>
-                          </Link>
+                          </span>
                         ) : (
                           <span className="text-gray-400">
                             {notif.type === NotificationType.LIKE && 'le dio like a tu post.'}
@@ -78,7 +97,7 @@ const Notifications: React.FC = () => {
 
                 {/* Botones de acción para solicitudes de amistad pendientes */}
                 {notif.type === NotificationType.FRIEND_REQUEST && notif.status === 'pending' && (
-                  <div className="flex gap-2 mt-4 ml-16">
+                  <div className="flex gap-2 mt-4 ml-16" onClick={(e) => e.stopPropagation()}>
                     <button 
                       onClick={() => respondToFriendRequest(notif.id, 'accepted')}
                       className="flex-1 md:flex-none flex items-center justify-center gap-2 bg-[#2ECC71] text-black text-xs font-bold px-5 py-2 rounded-xl hover:bg-[#27AE60] transition-all active:scale-95 shadow-md shadow-[#2ECC71]/10"
@@ -94,7 +113,7 @@ const Notifications: React.FC = () => {
                   </div>
                 )}
 
-                {notif.status && notif.status !== 'pending' && (
+                {(notif.status && notif.status !== 'pending') && (
                   <div className="mt-2 ml-16">
                     <span className={`text-[10px] font-extrabold uppercase tracking-widest px-2 py-1 rounded-md ${notif.status === 'accepted' ? 'text-[#2ECC71] bg-[#2ECC71]/10' : 'text-gray-500 bg-white/5'}`}>
                       {notif.status === 'accepted' ? 'Solicitud Aceptada' : 'Solicitud Rechazada'}
