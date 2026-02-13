@@ -1,4 +1,3 @@
-
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Post, User, AppState, Notification, Message, Story, NotificationType, Comment } from '../types';
 import { INITIAL_DATA } from '../constants';
@@ -86,11 +85,15 @@ export const SocialProvider: React.FC<{ children: React.ReactNode }> = ({ childr
           supabase.from('profiles').select('*'),
           supabase.from('comments').select('*').order('created_at', { ascending: true }),
           supabase.from('notifications').select('*').eq('user_id', currentUser?.id).order('created_at', { ascending: false }),
-          supabase.from('messages').select('*').or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`).order('created_at', { ascending: true })
+          supabase.from('messages').select('id, sender_id, receiver_id, text, created_at').or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`).order('created_at', { ascending: true })
         ]);
 
         if (profilesRes.data) {
-          const appUsers = profilesRes.data.map(mapDbProfileToUser);
+          let appUsers = profilesRes.data.map(mapDbProfileToUser);
+          // Asegurar que el usuario actual siempre esté en la lista
+          if (currentUser && !appUsers.find(u => u.id === currentUser.id)) {
+            appUsers = [...appUsers, currentUser];
+          }
           const allComments = commentsRes.data || [];
           const appPosts = postsRes.data
             ? postsRes.data.map(p => mapDbPostToApp(p, appUsers, allComments))
