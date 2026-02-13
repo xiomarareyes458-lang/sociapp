@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { HashRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
@@ -14,23 +13,42 @@ import Auth from './pages/Auth';
 
 const PrivateRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isAuthenticated } = useAuth();
-  return isAuthenticated ? <Layout>{children}</Layout> : <Navigate to="/login" />;
+  return isAuthenticated ? <Layout>{children}</Layout> : <Navigate to="/login" replace />;
 };
 
 const AppRoutes: React.FC = () => {
   const { isAuthenticated } = useAuth();
-  
+
   return (
     <Routes>
-      <Route path="/login" element={isAuthenticated ? <Navigate to="/" /> : <Auth />} />
+      <Route path="/login" element={isAuthenticated ? <Navigate to="/" replace /> : <Auth />} />
       <Route path="/" element={<PrivateRoute><Feed /></PrivateRoute>} />
       <Route path="/explore" element={<PrivateRoute><Explore /></PrivateRoute>} />
       <Route path="/messages" element={<PrivateRoute><Messages /></PrivateRoute>} />
       <Route path="/notifications" element={<PrivateRoute><Notifications /></PrivateRoute>} />
       <Route path="/profile/:username" element={<PrivateRoute><Profile /></PrivateRoute>} />
       <Route path="/post/:postId" element={<PrivateRoute><PostDetail /></PrivateRoute>} />
-      <Route path="*" element={<Navigate to="/" />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
+  );
+};
+
+// Wrapper que solo monta SocialProvider cuando el usuario está autenticado
+const AuthenticatedApp: React.FC = () => {
+  const { isAuthenticated } = useAuth();
+
+  if (!isAuthenticated) {
+    return (
+      <Routes>
+        <Route path="*" element={<Auth />} />
+      </Routes>
+    );
+  }
+
+  return (
+    <SocialProvider>
+      <AppRoutes />
+    </SocialProvider>
   );
 };
 
@@ -38,9 +56,7 @@ const App: React.FC = () => {
   return (
     <Router>
       <AuthProvider>
-        <SocialProvider>
-          <AppRoutes />
-        </SocialProvider>
+        <AuthenticatedApp />
       </AuthProvider>
     </Router>
   );
