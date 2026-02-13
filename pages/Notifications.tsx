@@ -20,7 +20,7 @@ const Notifications: React.FC = () => {
 
   const getIcon = (type: NotificationType, status?: string) => {
     if (type === NotificationType.FRIEND_REQUEST || type === NotificationType.FRIEND_ACCEPTED) {
-      if (status === 'accepted' || type === NotificationType.FRIEND_ACCEPTED) return <Users className="w-4 h-4 text-[#2ECC71]" />;
+      if (status === 'accepted' || type === NotificationType.FRIEND_ACCEPTED) return <UserCheck className="w-4 h-4 text-[#2ECC71]" />;
       if (status === 'rejected') return <UserX className="w-4 h-4 text-red-500" />;
       return <UserPlus className="w-4 h-4 text-[#2ECC71]" />;
     }

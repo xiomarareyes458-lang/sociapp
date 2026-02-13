@@ -42,7 +42,7 @@ const mapDbPostToApp = (p: any, users: User[], comments: any[] = []): Post => {
         id: c.id,
         userId: c.user_id,
         username: cAuthor?.username || 'usuario',
-        text: c.text,
+        text: c.content || c.text,
         createdAt: new Date(c.created_at).getTime()
       };
     })
@@ -74,18 +74,19 @@ export const SocialProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       return;
     }
 
-    if (!isSupabaseConfigured || !supabase) {
-      setIsLoading(false);
+    if (!isSupabaseConfigured || !supabase || !currentUser) {
+      if (!currentUser) setIsLoading(false);
       return;
     }
 
     const loadData = async () => {
       try {
-        const [postsRes, profilesRes, commentsRes, notifsRes] = await Promise.all([
+        const [postsRes, profilesRes, commentsRes, notifsRes, messagesRes] = await Promise.all([
           supabase.from('posts').select('*').order('created_at', { ascending: false }),
           supabase.from('profiles').select('*'),
           supabase.from('comments').select('*').order('created_at', { ascending: true }),
-          supabase.from('notifications').select('*').eq('user_id', currentUser?.id).order('created_at', { ascending: false })
+          supabase.from('notifications').select('*').eq('user_id', currentUser?.id).order('created_at', { ascending: false }),
+          supabase.from('messages').select('*').or(`sender_id.eq.${currentUser.id},receiver_id.eq.${currentUser.id}`).order('created_at', { ascending: true })
         ]);
 
         if (profilesRes.data) {
@@ -97,7 +98,6 @@ export const SocialProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
           const appNotifs = (notifsRes.data || []).map((n: any) => {
             const sender = appUsers.find(u => u.id === n.sender_id);
-
             return {
               id: n.id,
               type: n.type as NotificationType,
@@ -108,15 +108,24 @@ export const SocialProvider: React.FC<{ children: React.ReactNode }> = ({ childr
               referenceId: n.reference_id,
               createdAt: new Date(n.created_at).getTime(),
               read: n.read,
-              status: n.type === 'FRIEND_REQUEST' ? 'pending' : undefined
+              status: n.status
             };
           });
+
+          const appMessages = (messagesRes.data || []).map((m: any) => ({
+            id: m.id,
+            senderId: m.sender_id,
+            receiverId: m.receiver_id,
+            text: m.text,
+            timestamp: new Date(m.created_at).getTime()
+          }));
 
           setState(prev => ({
             ...prev,
             users: appUsers,
             posts: appPosts,
-            notifications: appNotifs
+            notifications: appNotifs,
+            messages: appMessages
           }));
         }
 
@@ -127,16 +136,58 @@ export const SocialProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       }
     };
 
-    if (currentUser) loadData();
-    else setIsLoading(false);
+    loadData();
+
+    // SUSCRIPCIONES REAL-TIME
+    const channel = supabase.channel('social-sync')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'posts' }, async (payload: any) => {
+         // Recargar posts o actualizar localmente
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${currentUser.id}` }, (payload: any) => {
+        const m = payload.new;
+        setState(prev => ({
+          ...prev,
+          messages: [...prev.messages, {
+            id: m.id,
+            senderId: m.sender_id,
+            receiverId: m.receiver_id,
+            text: m.text,
+            timestamp: new Date(m.created_at).getTime()
+          }]
+        }));
+      })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications', filter: `user_id=eq.${currentUser.id}` }, (payload: any) => {
+        const n = payload.new;
+        setState(prev => {
+          const sender = prev.users.find(u => u.id === n.sender_id);
+          return {
+            ...prev,
+            notifications: [{
+              id: n.id,
+              type: n.type as NotificationType,
+              senderId: n.sender_id,
+              senderUsername: sender?.username || 'usuario',
+              senderAvatar: sender?.avatar || '',
+              receiverId: n.user_id,
+              referenceId: n.reference_id,
+              createdAt: new Date(n.created_at).getTime(),
+              read: n.read,
+              status: n.status
+            }, ...prev.notifications]
+          };
+        });
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
 
   }, [isDemoMode, currentUser?.id]);
 
   // Add a new post
   const addPost = async (imageUrl: string, content: string, type: 'image' | 'video' = 'image') => {
     if (!currentUser) return;
-
-    // Objeto base sin 'likes' para evitar error de tipos en Supabase
     const postPayload = {
       user_id: currentUser.id,
       content,
@@ -147,46 +198,21 @@ export const SocialProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (!isDemoMode && supabase) {
       try {
-        const { data, error } = await supabase
-          .from('posts')
-          .insert([postPayload])
-          .select()
-          .maybeSingle();
-
+        const { data, error } = await supabase.from('posts').insert([postPayload]).select().maybeSingle();
         if (error) throw error;
-
         if (data) {
-          setState(prev => ({
-            ...prev,
-            posts: [mapDbPostToApp(data, prev.users), ...prev.posts]
-          }));
+          setState(prev => ({ ...prev, posts: [mapDbPostToApp(data, prev.users), ...prev.posts] }));
         }
-
-      } catch (e) {
-        console.error(e);
-        throw e;
-      }
+      } catch (e) { console.error(e); }
     } else {
-      // Para modo local/demo añadimos 'likes: []' manualmente para cumplir con la interfaz Post
-      const localPostData = { ...postPayload, likes: [] };
-      const localPost = {
-        ...mapDbPostToApp(localPostData, state.users),
-        id: 'local-' + Date.now(),
-        username: currentUser.username,
-        userAvatar: currentUser.avatar
-      };
-
-      setState(prev => ({
-        ...prev,
-        posts: [localPost, ...prev.posts]
-      }));
+      const localPost = { ...mapDbPostToApp({ ...postPayload, likes: [] }, state.users), id: 'local-' + Date.now(), username: currentUser.username, userAvatar: currentUser.avatar };
+      setState(prev => ({ ...prev, posts: [localPost, ...prev.posts] }));
     }
   };
 
   // Toggle like on a post
   const toggleLike = async (postId: string) => {
     if (!currentUser) return;
-
     const post = state.posts.find(p => p.id === postId);
     if (!post) return;
 
@@ -220,34 +246,12 @@ export const SocialProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     if (!isDemoMode && supabase) {
       try {
-        const { data, error } = await supabase.from('comments').insert([{
-          post_id: postId,
-          user_id: currentUser.id,
-          text: text
-        }]).select().single();
-
+        const { data, error } = await supabase.from('comments').insert([{ post_id: postId, user_id: currentUser.id, content: text }]).select().single();
         if (error) throw error;
-
-        const newComment: Comment = {
-          id: data.id,
-          userId: currentUser.id,
-          username: currentUser.username,
-          text: text,
-          createdAt: new Date(data.created_at).getTime()
-        };
-
-        setState(prev => ({
-          ...prev,
-          posts: prev.posts.map(p => p.id === postId ? { ...p, comments: [...p.comments, newComment] } : p)
-        }));
-
+        const newComment: Comment = { id: data.id, userId: currentUser.id, username: currentUser.username, text: text, createdAt: new Date(data.created_at).getTime() };
+        setState(prev => ({ ...prev, posts: prev.posts.map(p => p.id === postId ? { ...p, comments: [...p.comments, newComment] } : p) }));
         if (post.userId !== currentUser.id) {
-          await supabase.from('notifications').insert([{
-            user_id: post.userId,
-            sender_id: currentUser.id,
-            type: 'COMMENT',
-            reference_id: postId
-          }]);
+          await supabase.from('notifications').insert([{ user_id: post.userId, sender_id: currentUser.id, type: 'COMMENT', reference_id: postId }]);
         }
       } catch (e) { console.error(e); }
     } else {
@@ -284,52 +288,15 @@ export const SocialProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!currentUser) return;
     const isFollowing = currentUser.following.includes(targetUserId);
     if (isFollowing) {
-      const newCurrentUserFollowing = currentUser.following.filter(id => id !== targetUserId);
-      const newCurrentUserFollowers = currentUser.followers.filter(id => id !== targetUserId);
-      const targetUser = state.users.find(u => u.id === targetUserId);
-      const newTargetFollowers = (targetUser?.followers || []).filter(id => id !== currentUser.id);
-      const newTargetFollowing = (targetUser?.following || []).filter(id => id !== currentUser.id);
-      setState(prev => ({
-        ...prev,
-        users: prev.users.map(u => {
-          if (u.id === currentUser.id) return { ...u, following: newCurrentUserFollowing, followers: newCurrentUserFollowers };
-          if (u.id === targetUserId) return { ...u, followers: newTargetFollowers, following: newTargetFollowing };
-          return u;
-        })
-      }));
-      await updateCurrentUser({ following: newCurrentUserFollowing, followers: newCurrentUserFollowers });
-      if (!isDemoMode && supabase) {
-        await supabase.from('profiles').update({ followers: newTargetFollowers, following: newTargetFollowing }).eq('id', targetUserId);
-      }
+      const newFollowing = currentUser.following.filter(id => id !== targetUserId);
+      await updateCurrentUser({ following: newFollowing });
     } else {
       if (!isDemoMode && supabase) {
         try {
-          const { data: request, error: reqError } = await supabase.from('friend_requests').insert([{
-            sender_id: currentUser.id,
-            receiver_id: targetUserId
-          }]).select().single();
+          const { data: request, error: reqError } = await supabase.from('friend_requests').insert([{ sender_id: currentUser.id, receiver_id: targetUserId }]).select().single();
           if (reqError) throw reqError;
-          await supabase.from('notifications').insert([{
-            user_id: targetUserId,
-            sender_id: currentUser.id,
-            type: 'FRIEND_REQUEST',
-            reference_id: request.id
-          }]);
-          const newNotif: Notification = {
-            id: 'notif-' + Date.now(),
-            type: NotificationType.FRIEND_REQUEST,
-            senderId: currentUser.id,
-            senderUsername: currentUser.username,
-            senderAvatar: currentUser.avatar,
-            receiverId: targetUserId,
-            createdAt: Date.now(),
-            read: false,
-            status: 'pending'
-          };
-          setState(prev => ({ ...prev, notifications: [newNotif, ...prev.notifications] }));
-        } catch (e) {
-          console.warn("Solicitud ya enviada o error:", e);
-        }
+          await supabase.from('notifications').insert([{ user_id: targetUserId, sender_id: currentUser.id, type: 'FRIEND_REQUEST', reference_id: request.id }]);
+        } catch (e) { console.warn("Error:", e); }
       }
     }
   };
@@ -342,38 +309,20 @@ export const SocialProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       const senderId = notif.senderId;
       const senderUser = state.users.find(u => u.id === senderId);
       if (senderUser) {
-        const newSenderFollowing = Array.from(new Set([...(senderUser.following || []), currentUser.id]));
-        const newSenderFollowers = Array.from(new Set([...(senderUser.followers || []), currentUser.id]));
         const newCurrentUserFollowing = Array.from(new Set([...(currentUser.following || []), senderId]));
         const newCurrentUserFollowers = Array.from(new Set([...(currentUser.followers || []), senderId]));
         setState(prev => ({
           ...prev,
           users: prev.users.map(u => {
-            if (u.id === senderId) return { ...u, following: newSenderFollowing, followers: newSenderFollowers };
             if (u.id === currentUser.id) return { ...u, following: newCurrentUserFollowing, followers: newCurrentUserFollowers };
             return u;
           }),
-          notifications: [
-            {
-              id: 'notif-acc-' + Date.now(),
-              type: NotificationType.FRIEND_ACCEPTED,
-              senderId: currentUser.id,
-              senderUsername: currentUser.username,
-              senderAvatar: currentUser.avatar,
-              receiverId: senderId,
-              createdAt: Date.now(),
-              read: false
-            },
-            ...prev.notifications.map(n => n.id === notificationId ? { ...n, status, read: true } : n)
-          ]
+          notifications: prev.notifications.map(n => n.id === notificationId ? { ...n, status, read: true } : n)
         }));
         await updateCurrentUser({ followers: newCurrentUserFollowers, following: newCurrentUserFollowing });
         if (!isDemoMode && supabase) {
-          try {
-            await supabase.from('profiles').update({ following: newSenderFollowing, followers: newSenderFollowers }).eq('id', senderId);
-            await supabase.from('friend_requests').update({ status: 'accepted' }).eq('sender_id', senderId).eq('receiver_id', currentUser.id);
-            await supabase.from('notifications').insert([{ user_id: senderId, sender_id: currentUser.id, type: 'FRIEND_ACCEPTED' }]);
-          } catch (e) { console.error(e); }
+          await supabase.from('friend_requests').update({ status: 'accepted' }).eq('sender_id', senderId).eq('receiver_id', currentUser.id);
+          await supabase.from('notifications').insert([{ user_id: senderId, sender_id: currentUser.id, type: 'FRIEND_ACCEPTED' }]);
         }
       }
     } else {
@@ -401,13 +350,8 @@ export const SocialProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // Update user profile data
   const updateUser = async (userId: string, data: Partial<User>) => {
-    setState(prev => ({
-      ...prev,
-      users: prev.users.map(u => u.id === userId ? { ...u, ...data } : u)
-    }));
-    if (currentUser?.id === userId) {
-      await updateCurrentUser(data);
-    }
+    setState(prev => ({ ...prev, users: prev.users.map(u => u.id === userId ? { ...u, ...data } : u) }));
+    if (currentUser?.id === userId) await updateCurrentUser(data);
   };
 
   // Mark all notifications as read
@@ -423,18 +367,9 @@ export const SocialProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     if (!currentUser) return;
     if (!isDemoMode && supabase) {
       try {
-        const { data: msg, error: msgError } = await supabase.from('messages').insert([{
-          sender_id: currentUser.id,
-          receiver_id: receiverId,
-          text: text
-        }]).select().single();
+        const { data: msg, error: msgError } = await supabase.from('messages').insert([{ sender_id: currentUser.id, receiver_id: receiverId, text: text }]).select().single();
         if (msgError) throw msgError;
-        await supabase.from('notifications').insert([{
-          user_id: receiverId,
-          sender_id: currentUser.id,
-          type: 'MESSAGE',
-          reference_id: msg.id
-        }]);
+        await supabase.from('notifications').insert([{ user_id: receiverId, sender_id: currentUser.id, type: 'MESSAGE', reference_id: msg.id }]);
         const newMessage: Message = { id: msg.id, senderId: currentUser.id, receiverId, text, timestamp: Date.now() };
         setState(prev => ({ ...prev, messages: [...prev.messages, newMessage] }));
       } catch (e) { console.error(e); }
@@ -457,22 +392,7 @@ export const SocialProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   return (
     <SocialContext.Provider value={{
-      ...state,
-      isLoading,
-      addPost,
-      toggleLike,
-      addComment,
-      deletePost,
-      deleteComment,
-      repostPost,
-      toggleFollow,
-      addStory,
-      deleteStory,
-      updateUser,
-      markNotificationsAsRead,
-      respondToFriendRequest,
-      sendMessage,
-      markMessagesAsRead
+      ...state, isLoading, addPost, toggleLike, addComment, deletePost, deleteComment, repostPost, toggleFollow, addStory, deleteStory, updateUser, markNotificationsAsRead, respondToFriendRequest, sendMessage, markMessagesAsRead
     }}>
       {children}
     </SocialContext.Provider>

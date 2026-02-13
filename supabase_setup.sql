@@ -73,6 +73,15 @@ create table if not exists notifications (
   created_at timestamp with time zone default now()
 );
 
+-- 8. Tabla de Mensajes
+create table if not exists messages (
+  id uuid default gen_random_uuid() primary key,
+  sender_id uuid references profiles(id) on delete cascade,
+  receiver_id uuid references profiles(id) on delete cascade,
+  text text not null,
+  created_at timestamp with time zone default now()
+);
+
 -- Habilitar RLS en todas las tablas
 alter table profiles enable row level security;
 alter table posts enable row level security;
@@ -81,6 +90,7 @@ alter table comments enable row level security;
 alter table friends enable row level security;
 alter table friend_requests enable row level security;
 alter table notifications enable row level security;
+alter table messages enable row level security;
 
 -- Políticas de seguridad (Simplificadas para prototipo)
 create policy "Todo es legible para usuarios autenticados" on profiles for select using (true);
@@ -90,6 +100,7 @@ create policy "Todo es legible para usuarios autenticados" on comments for selec
 create policy "Todo es legible para usuarios autenticados" on friends for select using (true);
 create policy "Todo es legible para usuarios autenticados" on friend_requests for select using (true);
 create policy "Todo es legible para usuarios autenticados" on notifications for select using (true);
+create policy "Lectura de mensajes para participantes" on messages for select using (auth.uid() = sender_id or auth.uid() = receiver_id);
 
 create policy "Escritura permitida para autenticados" on profiles for all using (auth.uid() = id);
 create policy "Escritura permitida para autenticados" on posts for all using (auth.uid() = user_id);
@@ -98,3 +109,4 @@ create policy "Escritura permitida para autenticados" on comments for all using 
 create policy "Escritura permitida para autenticados" on friends for all using (auth.uid() = user_id);
 create policy "Escritura permitida para autenticados" on friend_requests for all using (auth.uid() = sender_id or auth.uid() = receiver_id);
 create policy "Escritura permitida para autenticados" on notifications for all using (auth.uid() = user_id or auth.uid() = sender_id);
+create policy "Inserción de mensajes para el remitente" on messages for insert with check (auth.uid() = sender_id);
