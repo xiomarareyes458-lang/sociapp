@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { User } from '../types';
 import { DEFAULT_AVATAR } from '../constants';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface AuthContextType {
   currentUser: User | null;
@@ -27,6 +27,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   useEffect(() => {
     isMounted.current = true;
     
+    if (!isSupabaseConfigured || !supabase) {
+      setLoading(false);
+      return;
+    }
+
     const initialize = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
@@ -71,11 +76,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   }, []);
 
   const login = async (email: string, password: string) => {
+    if (!isSupabaseConfigured || !supabase) {
+      throw new Error('Sin conexión al servidor');
+    }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
   };
 
   const register = async (email: string, password: string, username: string, fullName: string) => {
+    if (!isSupabaseConfigured || !supabase) {
+      throw new Error('Sin conexión al servidor');
+    }
     const { data, error: signUpError } = await supabase.auth.signUp({ 
       email, 
       password 
@@ -106,7 +117,12 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   const logout = async () => {
-    await supabase.auth.signOut();
+    if (isSupabaseConfigured && supabase) {
+      await supabase.auth.signOut();
+    } else {
+      setCurrentUser(null);
+      setIsDemoMode(false);
+    }
   };
 
   const enterDemoMode = () => {
@@ -131,6 +147,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return;
     }
     
+    if (!isSupabaseConfigured || !supabase) {
+      throw new Error('Sin conexión al servidor');
+    }
+
     const { error } = await supabase
       .from('profiles')
       .update(userData)

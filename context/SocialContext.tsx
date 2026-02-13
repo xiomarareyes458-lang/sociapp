@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { Post, User, AppState, Notification, Message, Story } from '../types';
 import { INITIAL_DATA } from '../constants';
 import { useAuth } from './AuthContext';
-import { supabase } from '../lib/supabase';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface SocialContextType {
   posts: Post[];
@@ -35,7 +35,7 @@ export const SocialProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
   // 1. Carga inicial desde Supabase
   useEffect(() => {
-    if (isDemoMode) {
+    if (isDemoMode || !isSupabaseConfigured || !supabase) {
       setIsInitialized(true);
       return;
     }
@@ -93,18 +93,22 @@ export const SocialProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       createdAt: Date.now()
     };
     
-    if (!isDemoMode) {
+    if (!isDemoMode && isSupabaseConfigured && supabase) {
       const { error } = await supabase.from('posts').insert([newPost]);
       if (error) throw error;
+    } else if (!isDemoMode) {
+      throw new Error('Sin conexión al servidor');
     }
 
     setState(prev => ({ ...prev, posts: [newPost, ...prev.posts] }));
   };
 
   const deletePost = async (postId: string) => {
-    if (!isDemoMode) {
+    if (!isDemoMode && isSupabaseConfigured && supabase) {
       const { error } = await supabase.from('posts').delete().eq('id', postId);
       if (error) throw error;
+    } else if (!isDemoMode) {
+      throw new Error('Sin conexión al servidor');
     }
     setState(prev => ({ ...prev, posts: prev.posts.filter(p => p.id !== postId) }));
   };
@@ -120,9 +124,11 @@ export const SocialProvider: React.FC<{ children: React.ReactNode }> = ({ childr
       ? post.likes.filter(id => id !== currentUser.id)
       : [...post.likes, currentUser.id];
 
-    if (!isDemoMode) {
+    if (!isDemoMode && isSupabaseConfigured && supabase) {
       const { error } = await supabase.from('posts').update({ likes: newLikes }).eq('id', postId);
       if (error) throw error;
+    } else if (!isDemoMode) {
+      throw new Error('Sin conexión al servidor');
     }
 
     setState(prev => ({
@@ -146,9 +152,11 @@ export const SocialProvider: React.FC<{ children: React.ReactNode }> = ({ childr
 
     const newComments = [...post.comments, newComment];
 
-    if (!isDemoMode) {
+    if (!isDemoMode && isSupabaseConfigured && supabase) {
       const { error } = await supabase.from('posts').update({ comments: newComments }).eq('id', postId);
       if (error) throw error;
+    } else if (!isDemoMode) {
+      throw new Error('Sin conexión al servidor');
     }
 
     setState(prev => ({
@@ -157,7 +165,6 @@ export const SocialProvider: React.FC<{ children: React.ReactNode }> = ({ childr
     }));
   };
 
-  // Implementaciones mock para el resto (Stories, Messages, etc. siguen en local para este prototipo)
   const addStory = (imageUrl: string, type: 'image' | 'video' = 'image') => {
     if (!currentUser) return;
     const newStory: Story = {
