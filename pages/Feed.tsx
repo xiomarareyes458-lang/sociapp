@@ -1,10 +1,10 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { useSocial } from '../context/SocialContext';
 import { useAuth } from '../context/AuthContext';
 import PostCard from '../components/PostCard';
 import { Smartphone, Image as ImageIcon, Smile, MapPin, Calendar, Plus, X, Upload, CheckCircle2, ChevronLeft, ChevronRight, Video, Trash2 } from 'lucide-react';
 import { formatDistanceToNow } from 'date-fns';
+import { compressImage } from '../lib/utils';
 
 const STORY_DURATION = 5000;
 
@@ -89,14 +89,27 @@ const Feed: React.FC = () => {
     const file = e.target.files?.[0];
     if (file) {
       const isVideo = file.type.startsWith('video/');
-      setComposerMediaType(isVideo ? 'video' : 'image');
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setComposerLocalBase64(reader.result as string);
-        setComposerImage(''); 
-      };
-      reader.readAsDataURL(file);
+      if (isVideo) {
+        setComposerMediaType('video');
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setComposerLocalBase64(reader.result as string);
+          setComposerImage(''); 
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setComposerMediaType('image');
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+          // COMPRESIÓN PARA EL FEED
+          const compressed = await compressImage(reader.result as string);
+          setComposerLocalBase64(compressed);
+          setComposerImage(''); 
+        };
+        reader.readAsDataURL(file);
+      }
     }
+    e.target.value = '';
   };
 
   const handleAddStory = () => {
@@ -122,14 +135,26 @@ const Feed: React.FC = () => {
     const file = e.target.files?.[0];
     if (file) {
       const isVideo = file.type.startsWith('video/');
-      setStoryMediaType(isVideo ? 'video' : 'image');
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setLocalStoryBase64(reader.result as string);
-        setStoryImageUrl(''); 
-      };
-      reader.readAsDataURL(file);
+      if (isVideo) {
+        setStoryMediaType('video');
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          setLocalStoryBase64(reader.result as string);
+          setStoryImageUrl(''); 
+        };
+        reader.readAsDataURL(file);
+      } else {
+        setStoryMediaType('image');
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+          const compressed = await compressImage(reader.result as string, 1080);
+          setLocalStoryBase64(compressed);
+          setStoryImageUrl(''); 
+        };
+        reader.readAsDataURL(file);
+      }
     }
+    e.target.value = '';
   };
 
   const closeStoryModal = () => {
@@ -211,7 +236,7 @@ const Feed: React.FC = () => {
           )}
           <div className="flex items-center justify-between mt-3 pt-3 border-t border-[#2F3336]">
             <div className="flex items-center gap-1 text-[#2ECC71]">
-              <input type="file" name="image" accept="image/*,video/*,image/webp,image/avif,image/png,image/jpeg,image/gif" hidden ref={composerFileInputRef} onChange={handleComposerFileChange} />
+              <input type="file" name="image" accept="image/*,video/*" hidden ref={composerFileInputRef} onChange={handleComposerFileChange} />
               <button type="button" onClick={() => composerFileInputRef.current?.click()} className="p-2 hover:bg-[#2ECC71]/10 rounded-full transition-colors" title="Subir imagen o video">
                 <ImageIcon className="w-[18px] h-[18px]" />
               </button>
@@ -348,7 +373,7 @@ const Feed: React.FC = () => {
             )}
 
             <div className="space-y-4">
-               <input type="file" name="storyImage" accept="image/*,video/*,image/webp,image/avif,image/png,image/jpeg,image/gif" hidden ref={storyFileInputRef} onChange={handleStoryFileChange} />
+               <input type="file" name="storyImage" accept="image/*,video/*" hidden ref={storyFileInputRef} onChange={handleStoryFileChange} />
                <button type="button" onClick={() => storyFileInputRef.current?.click()} className="w-full flex items-center justify-center gap-3 border-2 border-dashed border-[#2F3336] p-5 rounded-2xl hover:border-[#2ECC71]/50 hover:bg-[#2ECC71]/5 transition-all group">
                  <Video className={`w-5 h-5 ${localStoryBase64 ? 'text-[#2ECC71]' : 'text-gray-500 group-hover:text-[#2ECC71]'}`} />
                  <span className={`text-sm font-bold ${localStoryBase64 ? 'text-[#2ECC71]' : 'text-gray-400 group-hover:text-white'}`}>{localStoryBase64 ? 'Archivo seleccionado' : 'Subir Imagen o Video'}</span>

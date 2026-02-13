@@ -1,10 +1,12 @@
 
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { User } from '../types';
+import { supabase, isSupabaseConfigured } from '../lib/supabase';
 
 interface AuthContextType {
   currentUser: User | null;
-  login: (user: User) => void;
+  // Support both Supabase (email, password) and local mode (user object)
+  login: (emailOrUser: string | User, password?: string) => Promise<void>;
   logout: () => void;
   updateCurrentUser: (userData: Partial<User>) => void;
   isAuthenticated: boolean;
@@ -17,32 +19,85 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const storedUser = localStorage.getItem('insta_clone_user');
-    if (storedUser) {
-      setCurrentUser(JSON.parse(storedUser));
-    }
-    setLoading(false);
+    const initAuth = async () => {
+      if (!isSupabaseConfigured) {
+        const storedUser = localStorage.getItem('insta_clone_user');
+        if (storedUser) setCurrentUser(JSON.parse(storedUser));
+        setLoading(false);
+        return;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+        
+        if (profile) setCurrentUser(profile);
+      }
+      setLoading(false);
+    };
+
+    initAuth();
   }, []);
 
-  const login = (user: User) => {
-    setCurrentUser(user);
-    localStorage.setItem('insta_clone_user', JSON.stringify(user));
+  // Updated login function to handle both User object (local/mock) and string credentials (Supabase)
+  const login = async (emailOrUser: string | User, password?: string) => {
+    // If a User object is passed directly, we use it for local login (mock mode)
+    if (typeof emailOrUser !== 'string') {
+      setCurrentUser(emailOrUser);
+      localStorage.setItem('insta_clone_user', JSON.stringify(emailOrUser));
+      return;
+    }
+
+    // Supabase mode: login with email and password
+    if (!isSupabaseConfigured || !supabase) return;
+
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email: emailOrUser,
+      password: password || ''
+    });
+
+    if (error) {
+      console.error(error.message);
+      return;
+    }
+
+    if (data.user) {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', data.user.id)
+        .single();
+
+      if (profile) {
+        setCurrentUser(profile);
+        localStorage.setItem('insta_clone_user', JSON.stringify(profile));
+      }
+    }
   };
 
-  const logout = () => {
+  const logout = async () => {
+    if (isSupabaseConfigured) await supabase.auth.signOut();
     setCurrentUser(null);
     localStorage.removeItem('insta_clone_user');
   };
 
-  const updateCurrentUser = (userData: Partial<User>) => {
+  const updateCurrentUser = async (userData: Partial<User>) => {
     if (currentUser) {
       const updated = { ...currentUser, ...userData };
       setCurrentUser(updated);
       localStorage.setItem('insta_clone_user', JSON.stringify(updated));
+      
+      if (isSupabaseConfigured) {
+        await supabase.from('profiles').update(userData).eq('id', currentUser.id);
+      }
     }
   };
 
-  if (loading) return null;
+  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-[#2ECC71] font-bold">Cargando...</div>;
 
   return (
     <AuthContext.Provider value={{ currentUser, login, logout, updateCurrentUser, isAuthenticated: !!currentUser }}>
