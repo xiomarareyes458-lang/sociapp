@@ -17,16 +17,29 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const mapProfileToUser = (profile: any): User => ({
+  id: profile.id,
+  username: profile.username,
+  email: profile.email,
+  fullName: profile.full_name,
+  avatar: profile.avatar_url || DEFAULT_AVATAR,
+  bio: profile.bio || '',
+  joinedAt: profile.joined_at ? Number(profile.joined_at) : Date.now(),
+  coverPhoto: profile.cover_photo,
+  followers: profile.followers || [],
+  following: profile.following || []
+});
+
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [isDemoMode, setIsDemoMode] = useState(false);
-  const [isNetworkBlocked, setIsNetworkBlocked] = useState(false);
+  const [isNetworkBlocked] = useState(false);
   const isMounted = useRef(true);
 
   useEffect(() => {
     isMounted.current = true;
-    
+
     if (!isSupabaseConfigured || !supabase) {
       setLoading(false);
       return;
@@ -35,19 +48,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const initialize = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
+
         if (session?.user) {
           const { data: profile } = await supabase
             .from('profiles')
             .select('*')
             .eq('id', session.user.id)
             .single();
-          
+
           if (profile && isMounted.current) {
-            setCurrentUser(profile as User);
+            setCurrentUser(mapProfileToUser(profile));
           }
         }
       } catch (err) {
-        console.error("Error recuperando sesión Supabase:", err);
+        console.error("Error recuperando sesión:", err);
       } finally {
         if (isMounted.current) setLoading(false);
       }
@@ -56,126 +70,88 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     initialize();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session?.user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .single();
-        if (profile) setCurrentUser(profile as User);
-      } else if (event === 'SIGNED_OUT') {
-        setCurrentUser(null);
-        setIsDemoMode(false);
+      try {
+        if ((event === 'SIGNED_IN' || event === 'USER_UPDATED') && session?.user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+
+          if (profile) setCurrentUser(mapProfileToUser(profile));
+        } else if (event === 'SIGNED_OUT') {
+          setCurrentUser(null);
+          setIsDemoMode(false);
+        }
+      } catch (e) {
+        console.error("Error en cambio de estado de auth:", e);
       }
     });
 
-    return () => { 
+    return () => {
       isMounted.current = false;
       subscription.unsubscribe();
     };
   }, []);
 
   const login = async (email: string, password: string) => {
-    if (!isSupabaseConfigured || !supabase) {
-      throw new Error('Sin conexión al servidor');
-    }
+    if (!supabase) throw new Error('Servicio no disponible');
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
   };
 
-  const register = async (email: string, password: string, username: string, fullName: string) => {
-    if (!isSupabaseConfigured || !supabase) {
-      throw new Error('Sin conexión al servidor');
-    }
-    const { data, error: signUpError } = await supabase.auth.signUp({ 
-      email, 
-      password 
-    });
-
-    if (signUpError) throw signUpError;
-    if (!data.user) throw new Error('Error al crear usuario');
-
-    const newUserProfile = {
-      id: data.user.id,
-      username: username.toLowerCase().trim(),
-      email: email.trim(),
-      fullName: fullName.trim(),
-      avatar: DEFAULT_AVATAR,
-      bio: '',
-      joinedAt: Date.now(),
-      followers: [],
-      following: []
-    };
-
-    const { error: profileError } = await supabase
-      .from('profiles')
-      .insert([newUserProfile]);
-
-    if (profileError) throw profileError;
-    
-    setCurrentUser(newUserProfile as User);
+  // 🔥 IMPORTANTE: ya NO insertamos perfil manualmente
+  const register = async (email: string, password: string) => {
+    if (!supabase) throw new Error('Servicio no disponible');
+    const { error } = await supabase.auth.signUp({ email, password });
+    if (error) throw error;
   };
 
   const logout = async () => {
-    if (isSupabaseConfigured && supabase) {
-      await supabase.auth.signOut();
-    } else {
-      setCurrentUser(null);
-      setIsDemoMode(false);
-    }
+    if (supabase) await supabase.auth.signOut();
+    setCurrentUser(null);
+    setIsDemoMode(false);
   };
 
   const enterDemoMode = () => {
-    const mockUser: User = {
+    setIsDemoMode(true);
+    setCurrentUser({
       id: 'demo-user',
       username: 'invitado',
       email: 'demo@socialapp.com',
       fullName: 'Usuario Invitado',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lucky',
+      avatar: DEFAULT_AVATAR,
       bio: 'Modo Demo Activo',
       joinedAt: Date.now(),
       followers: [],
       following: []
-    };
-    setCurrentUser(mockUser);
-    setIsDemoMode(true);
+    });
   };
 
   const updateCurrentUser = async (userData: Partial<User>) => {
-    if (!currentUser || isDemoMode) {
-      if (isDemoMode) setCurrentUser({ ...currentUser!, ...userData });
-      return;
-    }
-    
-    if (!isSupabaseConfigured || !supabase) {
-      throw new Error('Sin conexión al servidor');
-    }
+    if (!currentUser || !supabase) return;
 
-    const { error } = await supabase
-      .from('profiles')
-      .update(userData)
-      .eq('id', currentUser.id);
+    const dbUpdates: any = {};
+    if (userData.fullName) dbUpdates.full_name = userData.fullName;
+    if (userData.avatar) dbUpdates.avatar_url = userData.avatar;
+    if (userData.bio !== undefined) dbUpdates.bio = userData.bio;
+    if (userData.coverPhoto !== undefined) dbUpdates.cover_photo = userData.coverPhoto;
+    if (userData.following) dbUpdates.following = userData.following;
+    if (userData.followers) dbUpdates.followers = userData.followers;
 
-    if (error) throw error;
+    await supabase.from('profiles').update(dbUpdates).eq('id', currentUser.id);
     setCurrentUser({ ...currentUser, ...userData });
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-6">
-        <div className="w-12 h-12 border-4 border-[#2ECC71] border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-[#2ECC71] text-xs font-black uppercase animate-pulse">Iniciando SocialApp...</p>
-      </div>
-    );
-  }
+  if (loading) return null;
 
   return (
-    <AuthContext.Provider value={{ 
-      currentUser, 
-      login, 
-      register, 
-      logout, 
-      updateCurrentUser, 
+    <AuthContext.Provider value={{
+      currentUser,
+      login,
+      register,
+      logout,
+      updateCurrentUser,
       enterDemoMode,
       isAuthenticated: !!currentUser,
       isDemoMode,

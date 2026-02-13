@@ -7,16 +7,18 @@ let supabase: any = null;
 export let isSupabaseConfigured = false;
 
 try {
-  supabase = createClient(supabaseUrl, supabaseAnonKey, {
-    auth: {
-      persistSession: true,
-      autoRefreshToken: true,
-      storageKey: 'social_app_auth_token'
-    }
-  });
-  isSupabaseConfigured = true;
+  if (supabaseUrl && supabaseAnonKey && supabaseUrl.startsWith('http')) {
+    supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        storageKey: 'social_app_auth_token'
+      }
+    });
+    isSupabaseConfigured = true;
+  }
 } catch (e) {
-  console.warn('Supabase no disponible en este entorno');
+  console.error('Error crítico inicializando Supabase:', e);
 }
 
 export { supabase };
