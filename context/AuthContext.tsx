@@ -1,15 +1,18 @@
-
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { User } from '../types';
-import { supabase, isSupabaseConfigured } from '../lib/supabase';
+import { DEFAULT_AVATAR } from '../constants';
+import { supabase } from '../lib/supabase';
 
 interface AuthContextType {
   currentUser: User | null;
-  // Support both Supabase (email, password) and local mode (user object)
-  login: (emailOrUser: string | User, password?: string) => Promise<void>;
-  logout: () => void;
-  updateCurrentUser: (userData: Partial<User>) => void;
+  login: (email: string, password: string) => Promise<void>;
+  register: (email: string, password: string, username: string, fullName: string) => Promise<void>;
+  logout: () => Promise<void>;
+  updateCurrentUser: (userData: Partial<User>) => Promise<void>;
+  enterDemoMode: () => void;
   isAuthenticated: boolean;
+  isDemoMode: boolean;
+  isNetworkBlocked: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -17,90 +20,147 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isDemoMode, setIsDemoMode] = useState(false);
+  const [isNetworkBlocked, setIsNetworkBlocked] = useState(false);
+  const isMounted = useRef(true);
 
   useEffect(() => {
-    const initAuth = async () => {
-      if (!isSupabaseConfigured) {
-        const storedUser = localStorage.getItem('insta_clone_user');
-        if (storedUser) setCurrentUser(JSON.parse(storedUser));
-        setLoading(false);
-        return;
+    isMounted.current = true;
+    
+    const initialize = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .single();
+          
+          if (profile && isMounted.current) {
+            setCurrentUser(profile as User);
+          }
+        }
+      } catch (err) {
+        console.error("Error recuperando sesión Supabase:", err);
+      } finally {
+        if (isMounted.current) setLoading(false);
       }
+    };
 
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
+    initialize();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session?.user) {
         const { data: profile } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', session.user.id)
           .single();
-        
-        if (profile) setCurrentUser(profile);
+        if (profile) setCurrentUser(profile as User);
+      } else if (event === 'SIGNED_OUT') {
+        setCurrentUser(null);
+        setIsDemoMode(false);
       }
-      setLoading(false);
-    };
-
-    initAuth();
-  }, []);
-
-  // Updated login function to handle both User object (local/mock) and string credentials (Supabase)
-  const login = async (emailOrUser: string | User, password?: string) => {
-    // If a User object is passed directly, we use it for local login (mock mode)
-    if (typeof emailOrUser !== 'string') {
-      setCurrentUser(emailOrUser);
-      localStorage.setItem('insta_clone_user', JSON.stringify(emailOrUser));
-      return;
-    }
-
-    // Supabase mode: login with email and password
-    if (!isSupabaseConfigured || !supabase) return;
-
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email: emailOrUser,
-      password: password || ''
     });
 
-    if (error) {
-      console.error(error.message);
-      return;
-    }
+    return () => { 
+      isMounted.current = false;
+      subscription.unsubscribe();
+    };
+  }, []);
 
-    if (data.user) {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', data.user.id)
-        .single();
+  const login = async (email: string, password: string) => {
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+  };
 
-      if (profile) {
-        setCurrentUser(profile);
-        localStorage.setItem('insta_clone_user', JSON.stringify(profile));
-      }
-    }
+  const register = async (email: string, password: string, username: string, fullName: string) => {
+    const { data, error: signUpError } = await supabase.auth.signUp({ 
+      email, 
+      password 
+    });
+
+    if (signUpError) throw signUpError;
+    if (!data.user) throw new Error('Error al crear usuario');
+
+    const newUserProfile = {
+      id: data.user.id,
+      username: username.toLowerCase().trim(),
+      email: email.trim(),
+      fullName: fullName.trim(),
+      avatar: DEFAULT_AVATAR,
+      bio: '',
+      joinedAt: Date.now(),
+      followers: [],
+      following: []
+    };
+
+    const { error: profileError } = await supabase
+      .from('profiles')
+      .insert([newUserProfile]);
+
+    if (profileError) throw profileError;
+    
+    setCurrentUser(newUserProfile as User);
   };
 
   const logout = async () => {
-    if (isSupabaseConfigured) await supabase.auth.signOut();
-    setCurrentUser(null);
-    localStorage.removeItem('insta_clone_user');
+    await supabase.auth.signOut();
+  };
+
+  const enterDemoMode = () => {
+    const mockUser: User = {
+      id: 'demo-user',
+      username: 'invitado',
+      email: 'demo@socialapp.com',
+      fullName: 'Usuario Invitado',
+      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=Lucky',
+      bio: 'Modo Demo Activo',
+      joinedAt: Date.now(),
+      followers: [],
+      following: []
+    };
+    setCurrentUser(mockUser);
+    setIsDemoMode(true);
   };
 
   const updateCurrentUser = async (userData: Partial<User>) => {
-    if (currentUser) {
-      const updated = { ...currentUser, ...userData };
-      setCurrentUser(updated);
-      localStorage.setItem('insta_clone_user', JSON.stringify(updated));
-      
-      if (isSupabaseConfigured) {
-        await supabase.from('profiles').update(userData).eq('id', currentUser.id);
-      }
+    if (!currentUser || isDemoMode) {
+      if (isDemoMode) setCurrentUser({ ...currentUser!, ...userData });
+      return;
     }
+    
+    const { error } = await supabase
+      .from('profiles')
+      .update(userData)
+      .eq('id', currentUser.id);
+
+    if (error) throw error;
+    setCurrentUser({ ...currentUser, ...userData });
   };
 
-  if (loading) return <div className="min-h-screen bg-black flex items-center justify-center text-[#2ECC71] font-bold">Cargando...</div>;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-black flex flex-col items-center justify-center gap-6">
+        <div className="w-12 h-12 border-4 border-[#2ECC71] border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-[#2ECC71] text-xs font-black uppercase animate-pulse">Iniciando SocialApp...</p>
+      </div>
+    );
+  }
 
   return (
-    <AuthContext.Provider value={{ currentUser, login, logout, updateCurrentUser, isAuthenticated: !!currentUser }}>
+    <AuthContext.Provider value={{ 
+      currentUser, 
+      login, 
+      register, 
+      logout, 
+      updateCurrentUser, 
+      enterDemoMode,
+      isAuthenticated: !!currentUser,
+      isDemoMode,
+      isNetworkBlocked
+    }}>
       {children}
     </AuthContext.Provider>
   );
